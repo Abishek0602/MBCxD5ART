@@ -4,7 +4,8 @@ module.exports = async function(deployer, network, accounts) {
     
     const MBC_ADMIN = accounts[0];
     const D5ART_ADMIN = accounts[1];
-    const JV_WALLET = accounts[2];
+    const D5ART_SUBADMIN = accounts[2];
+    const JV_WALLET = accounts[3];
 
     
     const BASIC_PRICE = web3.utils.toWei("0.1", "ether");
@@ -15,6 +16,7 @@ module.exports = async function(deployer, network, accounts) {
         MBCPaymentSplitter,
         MBC_ADMIN,
         D5ART_ADMIN,
+        D5ART_SUBADMIN,
         JV_WALLET,
         BASIC_PRICE,
         STANDARD_PRICE,
@@ -26,5 +28,6 @@ module.exports = async function(deployer, network, accounts) {
     console.log("Contract deployed at:", instance.address);
     console.log("MBC Admin:", MBC_ADMIN);
     console.log("D5ART Admin:", D5ART_ADMIN);
+    console.log("D5ART Admin:", D5ART_SUBADMIN);
     console.log("JV Wallet:", JV_WALLET);
 };

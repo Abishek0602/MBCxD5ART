@@ -2,26 +2,31 @@
 pragma solidity ^0.8.0;
 
 contract MBCPaymentSplitter {
+    uint256 public constant PRECISION = 1e6; // Precision factor for "floats"
+    
     address public MBC_ADMIN;
     address public D5ART_ADMIN;
-    address public JV_WALLET; 
-    
-    uint256 public constant JV_SPLIT_PERCENT = 20;
-    uint256 public constant BONUS_PERCENT = 10;
-    
+    address public D5ART_SUBADMIN;
+    address public JV_WALLET;
+
+    // Percentages expressed in fixed-point format (e.g., 20% = 0.2 * 1e6 = 200000)
+    uint256 public constant JV_SPLIT_PERCENT = 200000; // 20% = 0.2
+    uint256 public constant BONUS_PERCENT = 100000;    // 10% = 0.1
+
     enum PlanType { BASIC, STANDARD, PREMIUM }
-    
+
     mapping(PlanType => uint256) public originalPrices;
     mapping(PlanType => uint256) public concessionPrices;
-    
-    bool public mbcApproved;
-    bool public d5artApproved;
-    
+
+    bool public d5art_subAdminApproved;
+    bool public d5ar_AdmintApproved;
+
     event PaymentReceived(address payer, uint256 amount, PlanType plan);
     event CommissionPaid(address to, uint256 amount);
     event FundsReleased(address to, uint256 amount);
     event MbcAdminUpdated(address newAdmin);
     event D5artAdminUpdated(address newAdmin);
+    event D5art_subAdminUpdated(address new_subAdmin);
     event JvWalletUpdated(address newWallet);
     event PriceUpdated(PlanType plan, uint256 newOriginalPrice, uint256 newConcessionPrice);
 
@@ -36,13 +41,14 @@ contract MBCPaymentSplitter {
     }
 
     modifier onlyParties() {
-        require(msg.sender == MBC_ADMIN || msg.sender == D5ART_ADMIN, "Unauthorized");
+        require(msg.sender == D5ART_SUBADMIN || msg.sender == D5ART_ADMIN, "Unauthorized");
         _; 
     }
 
     constructor(
         address _mbcAdmin,
         address _d5artAdmin,
+        address _d5artsubAdmin,
         address _jvWallet,  
         uint256 _basicPrice,
         uint256 _standardPrice,
@@ -51,6 +57,7 @@ contract MBCPaymentSplitter {
         require(_mbcAdmin != address(0) && _d5artAdmin != address(0) && _jvWallet != address(0), "Invalid addresses");
         MBC_ADMIN = _mbcAdmin;
         D5ART_ADMIN = _d5artAdmin;
+        D5ART_SUBADMIN = _d5artsubAdmin;
         JV_WALLET = _jvWallet;
 
         _setPrice(PlanType.BASIC, _basicPrice);
@@ -63,8 +70,8 @@ contract MBCPaymentSplitter {
         
         emit PaymentReceived(msg.sender, msg.value, plan);
         
-        uint256 jvSplit = (originalPrices[plan] * JV_SPLIT_PERCENT) / 100;
-        uint256 bonusSplit = (originalPrices[plan] * BONUS_PERCENT) / 100;
+        uint256 jvSplit = (originalPrices[plan] * JV_SPLIT_PERCENT) / PRECISION;
+        uint256 bonusSplit = (originalPrices[plan] * BONUS_PERCENT) / PRECISION;
 
         (bool successJV, ) = JV_WALLET.call{value: jvSplit}("");
         require(successJV, "JV transfer failed");
@@ -76,13 +83,13 @@ contract MBCPaymentSplitter {
     }
 
     function approveRelease() external onlyParties {
-        if (msg.sender == MBC_ADMIN) {
-            mbcApproved = true;
+        if (msg.sender == D5ART_SUBADMIN) {
+            d5art_subAdminApproved = true;
         } else if (msg.sender == D5ART_ADMIN) {
-            d5artApproved = true;
+            d5ar_AdmintApproved = true;
         }
         
-        if (mbcApproved && d5artApproved) {
+        if (d5art_subAdminApproved && d5ar_AdmintApproved) {
             _releaseFunds();
         }
     }
@@ -96,8 +103,8 @@ contract MBCPaymentSplitter {
 
         emit FundsReleased(D5ART_ADMIN, d5artFinalShare);
 
-        mbcApproved = false;
-        d5artApproved = false;
+        d5art_subAdminApproved = false;
+        d5ar_AdmintApproved = false;
     }
 
     // --- Admin Controls ---
@@ -114,6 +121,12 @@ contract MBCPaymentSplitter {
         emit D5artAdminUpdated(newAdmin);
     }
 
+    function updateD5art_subAdmin( address new_subAdmin) external onlyD5ArtAdmin {
+        require(new_subAdmin != address(0), "Invalid address");
+        D5ART_SUBADMIN = new_subAdmin;
+        emit D5art_subAdminUpdated(new_subAdmin);
+    }
+
     function updateJvWallet(address newWallet) external onlyMBCAdmin {
         require(newWallet != address(0), "Invalid address");
         JV_WALLET = newWallet;
@@ -126,7 +139,7 @@ contract MBCPaymentSplitter {
 
     function _setPrice(PlanType plan, uint256 price) internal {
         originalPrices[plan] = price;
-        concessionPrices[plan] = (price * 90) / 100;
+        concessionPrices[plan] = (price * (PRECISION - BONUS_PERCENT)) / PRECISION;
         emit PriceUpdated(plan, price, concessionPrices[plan]);
     }
 
@@ -135,9 +148,6 @@ contract MBCPaymentSplitter {
         return address(this).balance;
     }
 
-    function checkBalance(address _address) public view returns (uint256) {
-        return _address.balance;
-    }
 
     fallback() external payable {
         revert("Direct transfers not allowed");
