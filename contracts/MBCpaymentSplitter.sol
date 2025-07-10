@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 contract MBCPaymentSplitter {
     uint256 public constant PRECISION = 1e6; // Precision factor for "floats"
     
@@ -8,6 +10,7 @@ contract MBCPaymentSplitter {
     address public D5ART_ADMIN;
     address public D5ART_SUBADMIN;
     address public JV_WALLET;
+    address public paymentToken;
 
     // Percentages expressed in fixed-point format (e.g., 20% = 0.2 * 1e6 = 200000)
     uint256 public constant JV_SPLIT_PERCENT = 200000; // 20% = 0.2
@@ -49,7 +52,8 @@ contract MBCPaymentSplitter {
         address _mbcAdmin,
         address _d5artAdmin,
         address _d5artsubAdmin,
-        address _jvWallet,  
+        address _jvWallet, 
+        address _token, 
         uint256 _basicPrice,
         uint256 _standardPrice,
         uint256 _premiumPrice
@@ -59,28 +63,32 @@ contract MBCPaymentSplitter {
         D5ART_ADMIN = _d5artAdmin;
         D5ART_SUBADMIN = _d5artsubAdmin;
         JV_WALLET = _jvWallet;
+        paymentToken = _token;
 
         _setPrice(PlanType.BASIC, _basicPrice);
         _setPrice(PlanType.STANDARD, _standardPrice);
         _setPrice(PlanType.PREMIUM, _premiumPrice);
     }
 
-    function makePayment(PlanType plan) external payable {
-        require(msg.value == concessionPrices[plan], "Incorrect payment amount");
-        
-        emit PaymentReceived(msg.sender, msg.value, plan);
-        
-        uint256 jvSplit = (originalPrices[plan] * JV_SPLIT_PERCENT) / PRECISION;
-        uint256 bonusSplit = (originalPrices[plan] * BONUS_PERCENT) / PRECISION;
+    function makePayment(PlanType plan) external {
+    uint256 price = concessionPrices[plan];
+    require(price > 0, "Invalid price");
 
-        (bool successJV, ) = JV_WALLET.call{value: jvSplit}("");
-        require(successJV, "JV transfer failed");
-        emit CommissionPaid(JV_WALLET, jvSplit);
+    // User must approve this contract to spend tokens before calling this
+    require(IERC20(paymentToken).transferFrom(msg.sender, address(this), price), "Token transfer failed");
 
-        (bool successBonus, ) = MBC_ADMIN.call{value: bonusSplit}("");
-        require(successBonus, "Bonus transfer failed");
-        emit CommissionPaid(MBC_ADMIN, bonusSplit);
-    }
+    emit PaymentReceived(msg.sender, price, plan);
+
+    uint256 jvSplit = (originalPrices[plan] * JV_SPLIT_PERCENT) / PRECISION;
+    uint256 bonusSplit = (originalPrices[plan] * BONUS_PERCENT) / PRECISION;
+
+    require(IERC20(paymentToken).transfer(JV_WALLET, jvSplit), "JV transfer failed");
+    emit CommissionPaid(JV_WALLET, jvSplit);
+
+    require(IERC20(paymentToken).transfer(MBC_ADMIN, bonusSplit), "Bonus transfer failed");
+    emit CommissionPaid(MBC_ADMIN, bonusSplit);
+}
+
 
     function approveRelease() external onlyParties {
         if (msg.sender == D5ART_SUBADMIN) {
@@ -95,17 +103,17 @@ contract MBCPaymentSplitter {
     }
 
     function _releaseFunds() private {
-        uint256 d5artFinalShare = address(this).balance;
-        require(d5artFinalShare > 0, "No funds to release");
+    uint256 tokenBalance = IERC20(paymentToken).balanceOf(address(this));
+    require(tokenBalance > 0, "No funds to release");
 
-        (bool success2, ) = D5ART_ADMIN.call{value: d5artFinalShare}("");
-        require(success2, "D5art transfer failed");
+    require(IERC20(paymentToken).transfer(D5ART_ADMIN, tokenBalance), "Token transfer failed");
 
-        emit FundsReleased(D5ART_ADMIN, d5artFinalShare);
+    emit FundsReleased(D5ART_ADMIN, tokenBalance);
 
-        d5art_subAdminApproved = false;
-        d5ar_AdmintApproved = false;
-    }
+    d5art_subAdminApproved = false;
+    d5ar_AdmintApproved = false;
+}
+
 
     // --- Admin Controls ---
 
@@ -133,7 +141,13 @@ contract MBCPaymentSplitter {
         emit JvWalletUpdated(newWallet);
     }
 
-    function updatePrice(PlanType plan, uint256 newPrice) external onlyMBCAdmin {
+    function updatePaymentToken(address newToken) external onlyMBCAdmin {
+    require(newToken != address(0), "Invalid token address");
+    paymentToken = newToken;
+}
+
+
+    function updatePrice(PlanType plan, uint256 newPrice) external onlyD5ArtAdmin {
         _setPrice(plan, newPrice);
     }
 
@@ -145,15 +159,16 @@ contract MBCPaymentSplitter {
 
     // --- Utilities ---
     function getContractBalance() public view returns (uint256) {
-        return address(this).balance;
-    }
+    return IERC20(paymentToken).balanceOf(address(this));
+}
 
 
-    fallback() external payable {
-        revert("Direct transfers not allowed");
-    }
 
-    receive() external payable {
-        revert("Please use makePayment function");
-    }
+    // fallback() external payable {
+    //     revert("Direct transfers not allowed");
+    // }
+
+    // receive() external payable {
+    //     revert("Please use makePayment function");
+    // }
 }

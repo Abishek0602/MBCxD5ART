@@ -92,7 +92,7 @@ module.exports = {
     // Useful for deploying to a public network.
     // Note: It's important to wrap the provider as a function to ensure truffle uses a new provider every time.
     bsctestnet: {
-      provider: () => new HDWalletProvider("", `https://data-seed-prebsc-2-s1.binance.org:8545/`),
+      provider: () => new HDWalletProvider("c526c4dee53a6d771a170635c9f6583f77783378b5cd9ee0971492d25d2149a8", `https://data-seed-prebsc-2-s1.binance.org:8545/`),
       network_id: 97,
       //gasPrice:  5000000000     // Goerli's id
       // confirmations: 2,    // # of confirmations to wait between deployments. (default: 0)
@@ -131,7 +131,7 @@ module.exports = {
          enabled: true,
          runs: 2000,
        },
-       evmVersion: "byzantium"
+       evmVersion: "london"
       }
     }
   },
